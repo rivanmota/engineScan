@@ -1,0 +1,55 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python (agent/)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# editor noise
+*.swp
+*.swo
+
+# control-plane: dependencies
+control-plane/node_modules
+
+# control-plane: next.js
+control-plane/.next/
+control-plane/out/
+
+# control-plane: production
+control-plane/build
+
+# control-plane: misc
+*.pem
+
+# control-plane: local env files
+control-plane/.env
+control-plane/.env*.local
+
+# control-plane: firebase emulator
+control-plane/.firebase/
+control-plane/firebase-debug.log
+control-plane/firestore-debug.log
+control-plane/ui-debug.log
+control-plane/firestore-emulator-data/
+
+# control-plane: logs
+control-plane/npm-debug.log*
+control-plane/yarn-debug.log*
+control-plane/yarn-error.log*
+control-plane/pnpm-debug.log*
+
+# control-plane: typescript
+control-plane/*.tsbuildinfo
+control-plane/next-env.d.ts
+
+# control-plane: testing/coverage
+control-plane/coverage/
+
+# control-plane: editor/deploy
+control-plane/.vercel
+control-plane/.eslintcache
