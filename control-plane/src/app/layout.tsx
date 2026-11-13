@@ -6,7 +6,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "StubEngine | Web Vulnerability Scanner",
+  title: "StubEngineScan | Web Vulnerability Scanner",
   description: "Scan any public URL for common web-security misconfigurations in seconds.",
 };
 

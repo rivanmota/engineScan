@@ -1,4 +1,4 @@
-# StubEngine Web Vulnerability Scanner
+# StubEngineScan Web Vulnerability Scanner
 
 A minimal **web-app vulnerability scanner SaaS**: a user submits a target
 URL, the control plane runs a set of safe, non-destructive, server-side
