@@ -1,5 +1,5 @@
 import tls from "tls";
-import { CheckContext, FindingInput } from "./types";
+import { CheckContext, FindingInput, CHECK_FAILED_EVIDENCE_PREFIX } from "./types";
 import { isSafeScanTarget } from "@/lib/scanScope";
 
 const CHECK_ID = "tls-config";
@@ -68,7 +68,7 @@ export async function checkTlsConfig(ctx: CheckContext): Promise<FindingInput[]>
           checkId: CHECK_ID,
           severity: "info",
           title: "TLS config check failed",
-          evidence: `Could not complete this check: ${String(e)}`,
+          evidence: `${CHECK_FAILED_EVIDENCE_PREFIX} ${String(e)}`,
         },
       ];
     }
@@ -129,7 +129,7 @@ export async function checkTlsConfig(ctx: CheckContext): Promise<FindingInput[]>
         checkId: CHECK_ID,
         severity: "info",
         title: "TLS config check failed",
-        evidence: `Could not complete this check: ${String(e)}`,
+        evidence: `${CHECK_FAILED_EVIDENCE_PREFIX} ${String(e)}`,
       },
     ];
   }

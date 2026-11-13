@@ -3,10 +3,9 @@ import { z } from "zod";
 import { requireOrgApiKey } from "@/lib/auth";
 import { getDb } from "@/lib/firestore";
 import { errorResponse } from "@/lib/httpErrors";
-import { scanFromDoc, findingFromDoc } from "@/lib/converters";
-import { isSafeScanTarget } from "@/lib/scanScope";
-import { runScan } from "@/lib/scanner";
-import { runChunkedBatch } from "@/lib/batch";
+import { scanFromDoc } from "@/lib/converters";
+import { loadFindingsForScans } from "@/lib/findings";
+import { executeScan } from "@/lib/executeScan";
 
 const createScanSchema = z.object({
   targetUrl: z.string().url(),
@@ -26,81 +25,68 @@ export async function POST(req: NextRequest) {
     }
     const body = parsed.data;
 
-    await isSafeScanTarget(body.targetUrl);
-
-    const db = getDb();
-    const scanRef = db.collection("scans").doc();
-    await scanRef.set({
+    const scan = await executeScan({
       organizationId,
       targetUrl: body.targetUrl,
       authorizedByName: body.authorizedByName,
       authorizedByEmail: body.authorizedByEmail,
       authorizedAt: new Date(),
-      status: "running",
-      createdAt: new Date(),
-      completedAt: null,
+      scheduleId: null,
     });
 
-    let findings: Awaited<ReturnType<typeof runScan>>;
-    let status: "completed" | "failed" = "completed";
-    try {
-      findings = await runScan(body.targetUrl);
-    } catch (e) {
-      status = "failed";
-      findings = [];
-      console.error(e);
-    }
-
-    const findingRefs = findings.map(() => db.collection("findings").doc());
-    await runChunkedBatch(
-      db,
-      findingRefs.map((ref, i) => (batch) =>
-        batch.set(ref, {
-          scanId: scanRef.id,
-          checkId: findings![i].checkId,
-          severity: findings![i].severity,
-          title: findings![i].title,
-          evidence: findings![i].evidence,
-          createdAt: new Date(),
-        })
-      )
-    );
-
-    await scanRef.update({ status, completedAt: new Date() });
-
-    const scan = scanFromDoc(await scanRef.get());
-    const findingDocs = await Promise.all(findingRefs.map((ref) => ref.get()));
-
-    return NextResponse.json(
-      { ...scan, findings: findingDocs.map(findingFromDoc) },
-      { status: 201 }
-    );
+    return NextResponse.json(scan, { status: 201 });
   } catch (e) {
     return errorResponse(e);
   }
 }
 
+const listScansQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  // The `nextCursor` from the previous page.
+  cursor: z.string().min(1).optional(),
+});
+
+// Cursor-paginated, newest first:
+//   GET /scans?limit=20               -> first page
+//   GET /scans?limit=20&cursor=<id>   -> the page after the scan with that id
+// Response: { scans, nextCursor, total }. nextCursor is null on the last page.
+// Cursors stay stable while new scans arrive, unlike page numbers/offsets.
 export async function GET(req: NextRequest) {
   try {
     const { organizationId } = await requireOrgApiKey(req);
+
+    const parsed = listScansQuerySchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    }
+    const { limit, cursor } = parsed.data;
+
     const db = getDb();
+    const orgScans = db.collection("scans").where("organizationId", "==", organizationId);
 
-    const scansSnap = await db
-      .collection("scans")
-      .where("organizationId", "==", organizationId)
-      .get();
+    // Requires the (organizationId ASC, createdAt DESC) composite index in
+    // firestore.indexes.json.
+    let pageQuery = orgScans.orderBy("createdAt", "desc");
+    if (cursor) {
+      const cursorSnap = await db.collection("scans").doc(cursor).get();
+      if (!cursorSnap.exists || cursorSnap.data()?.organizationId !== organizationId) {
+        return NextResponse.json({ error: "Invalid cursor" }, { status: 400 });
+      }
+      pageQuery = pageQuery.startAfter(cursorSnap);
+    }
 
-    const scans = await Promise.all(
-      scansSnap.docs.map(async (doc) => {
-        const scan = scanFromDoc(doc);
-        const findingsSnap = await db.collection("findings").where("scanId", "==", scan.id).get();
-        return { ...scan, findings: findingsSnap.docs.map(findingFromDoc) };
-      })
-    );
+    // One extra row tells us whether there's a next page.
+    const [pageSnap, countSnap] = await Promise.all([pageQuery.limit(limit + 1).get(), orgScans.count().get()]);
+    const hasMore = pageSnap.docs.length > limit;
+    const scans = pageSnap.docs.slice(0, limit).map(scanFromDoc);
 
-    scans.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const findingsByScan = await loadFindingsForScans(scans.map((s) => s.id));
 
-    return NextResponse.json(scans);
+    return NextResponse.json({
+      scans: scans.map((scan) => ({ ...scan, findings: findingsByScan.get(scan.id) ?? [] })),
+      nextCursor: hasMore ? scans[scans.length - 1].id : null,
+      total: countSnap.data().count,
+    });
   } catch (e) {
     return errorResponse(e);
   }

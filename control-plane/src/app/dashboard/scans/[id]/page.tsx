@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
+import Link from "next/link";
 import { useApiKey } from "../../ApiKeyProvider";
 
 interface Finding {
@@ -19,6 +20,7 @@ interface Scan {
   authorizedByEmail: string;
   createdAt: string;
   completedAt: string | null;
+  scheduleId: string | null;
   findings: Finding[];
 }
 
@@ -73,6 +75,16 @@ export default function ScanDetailPage({ params }: { params: Promise<{ id: strin
       <p className="text-sm muted" style={{ marginBottom: 24 }}>
         Created {new Date(scan.createdAt).toLocaleString()}
         {scan.completedAt && <> · Completed {new Date(scan.completedAt).toLocaleString()}</>}
+        {" · "}
+        {scan.scheduleId ? (
+          <>
+            Scheduled scan · <Link href={`/dashboard/schedules/${scan.scheduleId}`}>View schedule history</Link>
+          </>
+        ) : (
+          <Link href={`/dashboard/schedules/new?targetUrl=${encodeURIComponent(scan.targetUrl)}`}>
+            Re-scan this target on a schedule
+          </Link>
+        )}
       </p>
 
       <h2 style={{ marginBottom: 16 }}>Findings</h2>

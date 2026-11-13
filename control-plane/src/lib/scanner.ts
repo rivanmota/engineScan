@@ -2,7 +2,7 @@ import { checkSecurityHeaders } from "./checks/securityHeaders";
 import { checkTlsConfig } from "./checks/tlsConfig";
 import { checkExposedPaths } from "./checks/exposedPaths";
 import { checkCookieFlags } from "./checks/cookieFlags";
-import { Check, CheckContext, FindingInput } from "./checks/types";
+import { Check, CheckContext, FindingInput, CHECK_FAILED_EVIDENCE_PREFIX } from "./checks/types";
 
 // Orchestrates every check module against a target URL. Each check runs
 // independently with its own timeout; a check that throws or times out
@@ -44,7 +44,7 @@ export async function runScan(targetUrl: string): Promise<FindingInput[]> {
         checkId,
         severity: "info",
         title: `${checkId} check failed`,
-        evidence: `Could not complete this check: ${String(result.reason)}`,
+        evidence: `${CHECK_FAILED_EVIDENCE_PREFIX} ${String(result.reason)}`,
       });
     }
   });

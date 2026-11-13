@@ -35,6 +35,107 @@ look for a licensed pentest/red-team provider instead.
 | `exposedPaths.ts` | Passive GETs to common sensitive paths (`.env`, `.git/`, `/admin`, backup files); flags any that return HTTP 200. |
 | `cookieFlags.ts` | Flags cookies missing `Secure`, `HttpOnly`, or `SameSite`. |
 
+## Scheduled re-scans
+
+A target can be put on a schedule so it's re-scanned automatically. The
+schedule's page then shows, per issue, whether it's still **open**, was
+**fixed**, or **regressed** (came back after being fixed), along with a
+run-by-run history of what changed. Create one from **Schedules → New
+schedule** in the dashboard, or via "Re-scan this target on a schedule" on any
+scan.
+
+**Re-scan options.** Quick presets (every hour, every 6 hours, daily,
+weekdays, weekly, monthly) or a custom "repeat every N …":
+
+| Unit | Options | Example |
+|---|---|---|
+| hours | every 1–168 hours, counted from when the schedule was created | Every 6 hours |
+| days | every 1–365 days, at a time of day | Every 2 days at 03:00 |
+| weeks | every 1–52 weeks, on chosen weekdays, at a time of day | Every 2 weeks on Mon, Thu at 09:00 |
+| months | every 1–12 months, on a day of the month (1–31, clamped to shorter months' last day), at a time of day | Monthly on day 1 at 06:00 |
+
+Times of day are in the schedule's IANA timezone (defaults to the browser's),
+so "06:00 Europe/Rome" stays 06:00 across daylight-saving changes. A time
+skipped by a DST change runs just after it. A time that occurs twice runs the
+first time. The form previews the next runs before you save. Changing the
+cadence counts "every N" from the last run.
+
+**Authorization and expiry.** A schedule takes the same attestation as a
+one-off scan, plus how long it's valid: 30, 90 (default), 180 days, 1 year,
+or until a chosen date (at most 365 days ahead). Once it expires, runs are
+skipped (nothing is sent to the target) and the schedule shows "Authorization
+expired" until someone renews it with a fresh attestation and a new expiry.
+The dashboard warns 7 days ahead. Every scan records the attestation that was
+current when it ran. The target URL can't be edited; a different target needs
+a new schedule. Every run also re-checks the target with `isSafeScanTarget`,
+so a hostname that later resolves to a private address is skipped (with the
+reason shown) rather than scanned.
+
+How it works:
+
+- **Runs are ordinary scans** tagged with `scheduleId`, so they also appear in
+  the Scans list and detail pages. Creating a schedule runs a baseline scan
+  immediately.
+- **Fixed vs. regressed** is computed on read by comparing the schedule's
+  recent scans (up to 30). An issue is identified by its check and title.
+  `info` findings aren't tracked. If a check couldn't complete in a run
+  (timeout, target down), its issues are left unchanged and marked
+  "unverified" instead of being reported as fixed.
+- **Who triggers runs.** Either or both of:
+  - the in-process scheduler: `SCHEDULER_ENABLED=true` (the default in
+    `.env.local.example`) checks for due schedules every
+    `SCHEDULER_TICK_SECONDS` (default 60). Suited to `npm run dev` and
+    long-running `npm start`.
+  - an external cron calling `POST /internal/schedules/run-due` with
+    `Authorization: Bearer $SCHEDULER_SECRET`, for serverless deployments.
+    The endpoint is disabled unless `SCHEDULER_SECRET` is set.
+
+  Each due run is claimed in a Firestore transaction, so several instances,
+  or both triggers at once, never double-scan. If the scheduler was down, a
+  schedule runs once to catch up rather than replaying every missed run.
+- **Indexes.** The scan list and schedule history queries need the composite
+  indexes in `firestore.indexes.json` (`scans` by `organizationId`/`createdAt`
+  and by `scheduleId`/`createdAt`). The emulator doesn't need them, but
+  deploy them (`firebase deploy --only firestore:indexes`) before using a real
+  Firestore project.
+
+Schedules API (all require `X-Api-Key`):
+
+| Method & path | Purpose |
+|---|---|
+| `POST /schedules` | Create: `{targetUrl, cadence, timeZone, authorizedByName, authorizedByEmail, authorizationExpiresAt}`. Runs the baseline scan; 409 if the target already has a schedule. |
+| `GET /schedules` | List, with open-issue counts and the latest run's changes. |
+| `GET /schedules/:id` | Detail: tracked issues (open/fixed/regressed) and run history. |
+| `PATCH /schedules/:id` | `{enabled?, cadence?, timeZone?}`: pause/resume or change when it runs. |
+| `POST /schedules/:id/authorization` | Renew: `{authorizedByName, authorizedByEmail, authorizationExpiresAt}`. |
+| `POST /schedules/:id/run` | Run now (also works while paused; refused if the authorization has expired). |
+| `DELETE /schedules/:id` | Stop monitoring. Scans already run are kept. |
+
+`cadence` is one of:
+
+```json
+{ "unit": "hours",  "every": 6 }
+{ "unit": "days",   "every": 1, "time": "06:00" }
+{ "unit": "weeks",  "every": 2, "time": "09:00", "daysOfWeek": [1, 4] }
+{ "unit": "months", "every": 1, "time": "06:00", "dayOfMonth": 1 }
+```
+
+`daysOfWeek` uses 0 = Sunday … 6 = Saturday. `time` is 24-hour `HH:MM`.
+`timeZone` is an IANA name (default `UTC`). `authorizationExpiresAt` is an
+ISO-8601 timestamp.
+
+## Listing scans (pagination)
+
+`GET /scans` is cursor-paginated, newest first:
+
+```bash
+curl -H "X-Api-Key: <key>" "http://localhost:4000/scans?limit=20"
+# -> { "scans": [...], "nextCursor": "<scanId>" | null, "total": 345 }
+curl -H "X-Api-Key: <key>" "http://localhost:4000/scans?limit=20&cursor=<nextCursor>"
+```
+
+`limit` is 1–100 (default 20). `nextCursor` is `null` on the last page.
+
 ## Quick start
 
 The control plane runs locally against the **Firestore emulator** — no real
@@ -62,6 +163,8 @@ curl -H "X-Api-Key: <key>" \
   -d '{"targetUrl":"https://example.com","authorizedByName":"Jane Doe","authorizedByEmail":"jane@example.com"}' \
   http://localhost:4000/scans
 ```
+
+Unit tests (no emulator needed): `npm test`.
 
 ### Emulator data persistence
 

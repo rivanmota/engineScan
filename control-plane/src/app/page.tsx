@@ -17,6 +17,10 @@ const FEATURES = [
     title: "Cookie security",
     desc: "Flags cookies missing Secure, HttpOnly, or SameSite attributes.",
   },
+  {
+    title: "Scheduled re-scans",
+    desc: "Re-scan a target automatically and see which findings were fixed or regressed.",
+  },
 ];
 
 export default function Home() {

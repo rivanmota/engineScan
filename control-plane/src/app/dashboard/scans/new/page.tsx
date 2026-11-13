@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApiKey } from "../../ApiKeyProvider";
+import { AuthorizedEmailField } from "../../AuthorizedEmailField";
+import { authorizerDomainError } from "@/lib/authorizedDomain";
 
 export default function NewScanPage() {
   const { apiKey } = useApiKey();
@@ -13,10 +15,17 @@ export default function NewScanPage() {
   const [authorizedByEmail, setAuthorizedByEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setSubmitAttempted(true);
+    // Same rule the API enforces; the field shows the explanation.
+    if (authorizerDomainError(targetUrl, authorizedByEmail)) {
+      document.getElementById("authorizedByEmail")?.focus();
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/scans", {
@@ -25,7 +34,10 @@ export default function NewScanPage() {
         body: JSON.stringify({ targetUrl, authorizedByName, authorizedByEmail }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(JSON.stringify(data.error ?? data));
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : JSON.stringify(data.error ?? data));
+        return;
+      }
       router.push(`/dashboard/scans/${data.id}`);
     } catch (e) {
       setError(String(e));
@@ -80,19 +92,13 @@ export default function NewScanPage() {
               />
             </div>
 
-            <div className="field">
-              <label className="field-label" htmlFor="authorizedByEmail">
-                Authorized by (email)
-              </label>
-              <input
-                id="authorizedByEmail"
-                type="email"
-                value={authorizedByEmail}
-                onChange={(e) => setAuthorizedByEmail(e.target.value)}
-                required
-                className="input"
-              />
-            </div>
+            <AuthorizedEmailField
+              id="authorizedByEmail"
+              value={authorizedByEmail}
+              onChange={setAuthorizedByEmail}
+              targetUrl={targetUrl}
+              forceShowError={submitAttempted}
+            />
 
             {error && <p className="error-banner">{error}</p>}
 

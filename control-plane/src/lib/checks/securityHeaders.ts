@@ -1,4 +1,4 @@
-import { CheckContext, FindingInput } from "./types";
+import { CheckContext, FindingInput, CHECK_FAILED_EVIDENCE_PREFIX } from "./types";
 import { safeFetch } from "./safeFetch";
 
 const CHECK_ID = "security-headers";
@@ -66,7 +66,7 @@ export async function checkSecurityHeaders(ctx: CheckContext): Promise<FindingIn
         checkId: CHECK_ID,
         severity: "info",
         title: "Security headers check failed",
-        evidence: `Could not complete this check: ${String(e)}`,
+        evidence: `${CHECK_FAILED_EVIDENCE_PREFIX} ${String(e)}`,
       },
     ];
   }

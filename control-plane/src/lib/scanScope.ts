@@ -61,6 +61,25 @@ function isBlockedIp(ip: string): boolean {
   return true; // unrecognized shape, fail closed
 }
 
+// dns.lookup (getaddrinfo) reports "the name doesn't exist" and "it exists
+// but has no A/AAAA records" both as ENOTFOUND. Anything else means the
+// lookup itself failed on this server (resolver unreachable, timeout,
+// SERVFAIL), which says nothing about the target.
+function dnsFailureMessage(hostname: string, code: string | undefined): string {
+  if (code === "ENOTFOUND" || code === "ENODATA") {
+    const wwwHint = hostname.startsWith("www.") ? "" : ` (some sites only answer on "www.${hostname}")`;
+    return (
+      `The target's hostname "${hostname}" has no DNS address records, so there's nothing to scan. ` +
+      `Check the URL for typos and that the site is live${wwwHint}. ` +
+      `If it does open in a browser, the scanning server's DNS may not be able to see it.`
+    );
+  }
+  return (
+    `The DNS lookup for "${hostname}" failed on the scanning server (${code ?? "unknown error"}), ` +
+    `so the target couldn't be checked. This is usually a temporary DNS problem on the server, not with the target. Try again shortly.`
+  );
+}
+
 /**
  * Throws ScopeViolation if this URL is not a safe scan target. Call this
  * before making any outbound HTTP request to a user-submitted URL.
@@ -89,8 +108,12 @@ export async function isSafeScanTarget(targetUrl: string): Promise<void> {
     try {
       const records = await dns.lookup(hostname, { all: true });
       addresses = records.map((r) => r.address);
-    } catch {
-      throw new ScopeViolation("Target URL's hostname could not be resolved.");
+    } catch (e) {
+      // Still fail closed (an unresolvable target can't be checked), but say
+      // why, and keep the underlying error for whoever operates the server.
+      const code = (e as NodeJS.ErrnoException)?.code;
+      console.warn(`[scanScope] DNS lookup failed for ${hostname}: ${code ?? e}`);
+      throw new ScopeViolation(dnsFailureMessage(hostname, code));
     }
   }
 

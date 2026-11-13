@@ -1,4 +1,4 @@
-import { CheckContext, FindingInput } from "./types";
+import { CheckContext, FindingInput, CHECK_FAILED_EVIDENCE_PREFIX } from "./types";
 import { safeFetch } from "./safeFetch";
 
 const CHECK_ID = "exposed-paths";
@@ -28,6 +28,21 @@ export async function checkExposedPaths(ctx: CheckContext): Promise<FindingInput
       return { path, url, status: res.status };
     })
   );
+
+  // If no probe got any response at all (target down, DNS failure, ...), we
+  // learned nothing — report that instead of "nothing exposed", otherwise an
+  // outage would look like previously-exposed paths had been fixed.
+  if (results.every((r) => r.status === "rejected")) {
+    const firstError = (results[0] as PromiseRejectedResult | undefined)?.reason;
+    return [
+      {
+        checkId: CHECK_ID,
+        severity: "info",
+        title: "Exposed paths check failed",
+        evidence: `${CHECK_FAILED_EVIDENCE_PREFIX} none of the ${SENSITIVE_PATHS.length} path probes got a response (first error: ${String(firstError)})`,
+      },
+    ];
+  }
 
   const findings: FindingInput[] = [];
   for (const result of results) {
