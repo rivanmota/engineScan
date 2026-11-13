@@ -2,20 +2,23 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ApiKeyProvider } from "./ApiKeyProvider";
 import { ApiKeyInput } from "./ApiKeyInput";
+import { DashboardNav } from "./DashboardNav";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <ApiKeyProvider>
-      <div style={{ fontFamily: "sans-serif", maxWidth: 900, margin: "0 auto", padding: 24 }}>
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-          <nav style={{ display: "flex", gap: 16 }}>
-            <Link href="/dashboard">Campaigns</Link>
-            <Link href="/dashboard/campaigns/new">New campaign</Link>
-            <Link href="/dashboard/agents">Agents</Link>
-          </nav>
-          <ApiKeyInput />
+      <div className="app-shell">
+        <header className="app-topbar">
+          <Link href="/" className="brand">
+            <span className="brand-mark">SE</span>
+            StubEngine
+          </Link>
+          <DashboardNav />
+          <div className="topbar-actions">
+            <ApiKeyInput />
+          </div>
         </header>
-        {children}
+        <main className="app-main">{children}</main>
       </div>
     </ApiKeyProvider>
   );

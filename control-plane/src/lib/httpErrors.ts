@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AuthError } from "./auth";
-import { ScopeViolation } from "./scope";
+import { ScopeViolation } from "./scanScope";
 
 // Shared mapping from thrown errors to JSON responses, used by every route
 // handler so AuthError/ScopeViolation behave the same way the old Express

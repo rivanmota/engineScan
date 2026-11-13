@@ -1,58 +1,53 @@
-# StubEngine Attack Simulation
+# StubEngine Web Vulnerability Scanner
 
-A breach-and-attack-simulation (BAS) SaaS: an endpoint **agent** runs safe,
-non-destructive simulated attack techniques against a customer's own
-authorized assets, and a **control plane** schedules the work and reports
-whether existing defenses (AV/EDR, firewall/egress monitoring, IDS) actually
-caught it.
-
-This is the same category as SafeBreach, AttackIQ, and Cymulate, aimed at
-mid-market/SMB teams who are priced out of those, or who have no in-house
-red team to run this manually.
+A minimal **web-app vulnerability scanner SaaS**: a user submits a target
+URL, the control plane runs a set of safe, non-destructive, server-side
+HTTP checks against it, and the dashboard shows the findings.
 
 ## Why this and not a real pentest
 
 A real pentest or red-team exercise uses actual exploit code and is run by
 licensed humans who hold liability insurance. This product deliberately does
-**not** do that. Every technique module below is a *safe stand-in* for a
-real attacker action:
+**not** do that. Every check below is passive and non-destructive: it reads
+response headers, certificate metadata, and probes for commonly-exposed
+paths with plain GET requests — it never attempts to exploit a vulnerability
+or write/modify anything on the target.
 
-| Real attacker action | What this product does instead |
-|---|---|
-| Drop real malware, see if AV catches it | Drop the official EICAR test string, see if AV/EDR quarantines or alerts on it |
-| Establish real C2 and exfiltrate data | Send a clearly-tagged HTTP beacon to infrastructure *you* control, see if it's blocked/alerted |
-| Scan a network to find exploitable services | Scan only hosts the customer explicitly listed, TCP-connect only, no exploitation |
-
-Deliberately out of scope (see `docs/SAFETY_AND_SCOPE.md`):
-credential dumping, real exploitation of CVEs, ransomware-style file
-encryption, and spoofed phishing landing pages that harvest credentials.
-Those require a different liability/legal model (signed rules-of-engagement,
-licensed operators) than a self-serve SaaS can offer.
+Deliberately out of scope: active exploitation, credential-based
+testing, and anything that could disrupt the target. If you need that,
+look for a licensed pentest/red-team provider instead.
 
 ## Architecture
 
 ```
-┌──────────────┐      jobs       ┌──────────────┐     runs techniques    ┌──────────────┐
-│  Dashboard   │ ───────────────▶│ Control Plane│◀───────────────────────│  Agent       │
-│  (built-in,  │                 │ (Next.js App │      posts results     │  (Python,    │
-│  same app)   │◀─────reports────│  + Firestore)│────────────────────────▶ customer host)│
-└──────────────┘                 └──────────────┘                        └──────────────┘
+┌──────────────┐      X-Api-Key      ┌──────────────┐     HTTP requests    ┌──────────────┐
+│  Dashboard   │ ────────────────────▶│ Control Plane│──────────────────────▶ Target Site  │
+│  (built-in,  │                      │ (Next.js App │                      │  (customer-  │
+│  same app)   │◀────scan+findings────│  + Firestore)│                      │  owned URL)  │
+└──────────────┘                      └──────────────┘                      └──────────────┘
 ```
 
 - **Control plane** (`control-plane/`): a single Next.js (App Router) app.
-  Route Handlers under `src/app/**` serve the same API the agent/dashboard
-  always used (`/campaigns`, `/agents`, `/agents/jobs`, `/results`,
+  Route Handlers under `src/app/**` serve the API (`/scans`, `/scans/[id]`,
   `/health`), and `src/app/dashboard/**` serves the dashboard UI — one app,
-  one deploy target (e.g. Cloud Run). Data is stored in **Firestore**
-  (via `firebase-admin`) instead of Postgres/Prisma. Campaigns define
-  *scope* (which hosts/CIDRs, which techniques, what time window) up front.
-  It never lets an agent run a job outside the declared scope — see
-  `scopeGuard` (`assertJobInScope`) in `src/lib/scope.ts`.
-- **Agent** (`agent/`): a small Python poller installed on a customer
-  endpoint or jump box. Pulls its assigned jobs, runs the matching module,
-  posts the result back. Unchanged by the control-plane rewrite — it still
-  talks to the same paths, just on whatever host/port you pass via
-  `--control-plane`.
+  one deploy target (e.g. Cloud Run). Data is stored in **Firestore** (via
+  `firebase-admin`) instead of Postgres/Prisma.
+- A `Scan` is the unit of authorization: it records the target URL and who
+  attested they're authorized to scan it (see `docs/SAFETY_AND_SCOPE.md`).
+  `POST /scans` validates the target isn't a private/internal address (see
+  `src/lib/scanScope.ts`), then runs every check module directly against it
+  and stores the resulting `Finding` documents.
+- There is **no customer-installed agent**. Scans target public URLs, so
+  the control plane calls the target directly over HTTP.
+
+### Check modules (`control-plane/src/lib/checks/`)
+
+| Check | What it does |
+|---|---|
+| `securityHeaders.ts` | Flags missing/misconfigured CSP, HSTS, X-Frame-Options, X-Content-Type-Options headers. |
+| `tlsConfig.ts` | Checks certificate validity/expiry, and whether HTTP redirects to HTTPS. |
+| `exposedPaths.ts` | Passive GETs to common sensitive paths (`.env`, `.git/`, `/admin`, backup files); flags any that return HTTP 200. |
+| `cookieFlags.ts` | Flags cookies missing `Secure`, `HttpOnly`, or `SameSite`. |
 
 ## Quick start
 
@@ -68,33 +63,52 @@ cp .env.local.example .env.local
 npm run dev:emulator
 
 # Terminal 2: seed a dev Organization + ApiKey, then start the app
-npm run seed        # prints an X-Api-Key to use below
+npm run seed        # prints an X-Api-Key to use below (re-run anytime — it's idempotent)
 npm run dev          # Next.js app (API + dashboard) on :4000
 ```
 
 Open http://localhost:4000/dashboard, paste the `X-Api-Key` printed by
-`npm run seed`, and create a campaign from the UI — or call the API
-directly:
+`npm run seed`, and submit a scan from the UI — or call the API directly:
 
 ```bash
-curl -H "X-Api-Key: <key>" http://localhost:4000/campaigns
+curl -H "X-Api-Key: <key>" \
+  -H "Content-Type: application/json" \
+  -d '{"targetUrl":"https://example.com","authorizedByName":"Jane Doe","authorizedByEmail":"jane@example.com"}' \
+  http://localhost:4000/scans
 ```
 
-Then run the agent against it:
+### Emulator data persistence
+
+`npm run dev:emulator` imports from and exports to
+`control-plane/firestore-emulator-data/` (gitignored), so scans survive
+restarts — **as long as you stop it with a single `Ctrl+C`** and wait for
+the "Export complete" message before closing the terminal. Force-killing
+the process (closing the terminal window, a crash, `kill -9`) skips that
+export and silently wipes all data on next start, which also orphans any
+`X-Api-Key` you were using (it authenticates fine, it's just empty). If you
+suspect that happened, or just want a safety-net snapshot while the emulator
+is running, save it manually at any time with:
 
 ```bash
-cd ../agent
-pip install -r requirements.txt
-python agent.py --control-plane http://localhost:4000 --agent-token <token>
+npm run export:emulator
 ```
 
-(`<token>` comes from registering an agent, either via the dashboard's
-Agents page or `POST /agents`.)
+## Future checks to-do list
+
+These are common in full web-vulnerability scanners but are deliberately
+left out of this MVP's four checks — tracked here as follow-ups:
+
+- CORS misconfiguration detection
+- Mixed-content detection (HTTPS pages loading HTTP resources)
+- Outdated/vulnerable JS library detection
+- Subresource Integrity (SRI) checks
+- DNS/subdomain enumeration
+- Open redirect detection
+- Clickjacking protections beyond the `X-Frame-Options` header (e.g. CSP `frame-ancestors`)
 
 ## To be done in future releases
 
 - Auth/billing (Stripe), Firebase Auth for the dashboard, multi-tenant
   signup flow, SIEM webhook integrations (Splunk/Elastic), PDF reporting,
-  campaign scheduling cron, a real secrets store for agent tokens, and
+  async/queued scan execution and scheduling, a real secrets store, and
   deploying the app to Cloud Run/Cloud Firestore.
-

@@ -1,8 +1,7 @@
 // Seeds a dev Organization + ApiKey into the Firestore emulator so the
-// dashboard and the Python agent have something to authenticate with out of
-// the box (there's no signup flow yet). Run with `npm run seed` while the
-// emulator is running (FIRESTORE_EMULATOR_HOST must be set, e.g. via
-// `.env.local`).
+// dashboard/API has something to authenticate with out of the box (there's
+// no signup flow yet). Run with `npm run seed` while the emulator is
+// running (FIRESTORE_EMULATOR_HOST must be set, e.g. via `.env.local`).
 import dotenv from "dotenv";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
@@ -20,6 +19,35 @@ async function main() {
   }
 
   const db = getDb();
+
+  // Idempotent: if a previous run already seeded the dev organization, reuse
+  // its existing API key instead of minting a new (empty) org every time —
+  // otherwise each `npm run seed` silently orphans prior campaigns/agents
+  // under a key nobody is using anymore.
+  const existingOrgSnap = await db
+    .collection("organizations")
+    .where("name", "==", "Dev Organization")
+    .limit(1)
+    .get();
+
+  if (!existingOrgSnap.empty) {
+    const existingOrg = existingOrgSnap.docs[0];
+    const existingKeySnap = await db
+      .collection("apiKeys")
+      .where("organizationId", "==", existingOrg.id)
+      .limit(1)
+      .get();
+
+    if (!existingKeySnap.empty) {
+      const existingKey = existingKeySnap.docs[0].data().key;
+      console.log("Dev organization already seeded, reusing existing key:");
+      console.log(`  organizationId: ${existingOrg.id}`);
+      console.log(`  X-Api-Key:      ${existingKey}`);
+      console.log("\nUse this header to authenticate dashboard/API requests, e.g.:");
+      console.log(`  curl -H "X-Api-Key: ${existingKey}" http://localhost:4000/scans`);
+      return;
+    }
+  }
 
   const orgRef = db.collection("organizations").doc();
   await orgRef.set({
@@ -39,7 +67,7 @@ async function main() {
   console.log(`  organizationId: ${orgRef.id}`);
   console.log(`  X-Api-Key:      ${apiKey}`);
   console.log("\nUse this header to authenticate dashboard/API requests, e.g.:");
-  console.log(`  curl -H "X-Api-Key: ${apiKey}" http://localhost:4000/campaigns`);
+  console.log(`  curl -H "X-Api-Key: ${apiKey}" http://localhost:4000/scans`);
 }
 
 main()
