@@ -1,7 +1,6 @@
 # StubEngineScan Web Vulnerability Scanner
 
-A minimal **web-app vulnerability scanner SaaS**: a user submits a target
-URL, the control plane runs a set of safe, non-destructive, server-side
+An authorized user submits a target URL, the control plane runs a set of safe, non-destructive, server-side
 HTTP checks against it, and the dashboard shows the findings.
 
 ## Why this and not a real pentest
@@ -26,19 +25,6 @@ look for a licensed pentest/red-team provider instead.
 │  same app)   │◀────scan+findings────│  + Firestore)│                      │  owned URL)  │
 └──────────────┘                      └──────────────┘                      └──────────────┘
 ```
-
-- **Control plane** (`control-plane/`): a single Next.js (App Router) app.
-  Route Handlers under `src/app/**` serve the API (`/scans`, `/scans/[id]`,
-  `/health`), and `src/app/dashboard/**` serves the dashboard UI — one app,
-  one deploy target (e.g. Cloud Run). Data is stored in **Firestore** (via
-  `firebase-admin`) instead of Postgres/Prisma.
-- A `Scan` is the unit of authorization: it records the target URL and who
-  attested they're authorized to scan it (see `docs/SAFETY_AND_SCOPE.md`).
-  `POST /scans` validates the target isn't a private/internal address (see
-  `src/lib/scanScope.ts`), then runs every check module directly against it
-  and stores the resulting `Finding` documents.
-- There is **no customer-installed agent**. Scans target public URLs, so
-  the control plane calls the target directly over HTTP.
 
 ### Check modules (`control-plane/src/lib/checks/`)
 
@@ -93,22 +79,3 @@ is running, save it manually at any time with:
 npm run export:emulator
 ```
 
-## Future checks to-do list
-
-These are common in full web-vulnerability scanners but are deliberately
-left out of this MVP's four checks — tracked here as follow-ups:
-
-- CORS misconfiguration detection
-- Mixed-content detection (HTTPS pages loading HTTP resources)
-- Outdated/vulnerable JS library detection
-- Subresource Integrity (SRI) checks
-- DNS/subdomain enumeration
-- Open redirect detection
-- Clickjacking protections beyond the `X-Frame-Options` header (e.g. CSP `frame-ancestors`)
-
-## To be done in future releases
-
-- Auth/billing (Stripe), Firebase Auth for the dashboard, multi-tenant
-  signup flow, SIEM webhook integrations (Splunk/Elastic), PDF reporting,
-  async/queued scan execution and scheduling, a real secrets store, and
-  deploying the app to Cloud Run/Cloud Firestore.
