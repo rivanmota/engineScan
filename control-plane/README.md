@@ -12,9 +12,6 @@ response headers, certificate metadata, and probes for commonly-exposed
 paths with plain GET requests — it never attempts to exploit a vulnerability
 or write/modify anything on the target.
 
-Deliberately out of scope: active exploitation, credential-based
-testing, and anything that could disrupt the target. If you need that,
-look for a licensed pentest/red-team provider instead.
 
 ## Architecture
 
@@ -175,6 +172,29 @@ curl -H "X-Api-Key: <key>" \
 ```
 
 Unit tests (no emulator needed): `npm test`.
+
+### Running in a network-restricted sandbox/CI box
+
+If your environment only has access to a partial/offline npm registry
+mirror, `npm install` can fail with e.g. `404 ... brace-expansion-2.1.8.tgz
+is not in this registry`: `firebase-tools` (a devDependency, only needed for
+the local emulator) transitively pulls a very recent `brace-expansion`
+patch release via `glob`/`readdir-glob`/`superstatic` that such mirrors
+often haven't cached yet. `package.json` pins that transitive dependency to
+the long-stable `2.0.1` release via `"overrides"` to avoid this; if you still
+hit a 404 on a different transitive package, the usual fix is the same:
+add/extend the `overrides` entry to an older, widely-mirrored version of the
+offending package, then re-run `npm install` and commit the updated
+`package-lock.json`.
+
+Likewise, `firebase emulators:start` (used by `npm run dev:emulator`/
+`npm run dev:all`) downloads the Firestore emulator `.jar` from Google's
+servers on first run, which a sandbox without outbound internet access to
+`storage.googleapis.com` cannot do. This only affects the emulator-backed
+dev workflow — it is **not** required to verify the code: `npm install`
+followed by `npm test` (and optionally `npm run lint` / `npm run build`)
+exercises the full unit-test suite and the production build without ever
+starting the emulator or touching Firestore.
 
 ### Emulator data persistence
 
