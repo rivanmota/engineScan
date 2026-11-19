@@ -21,6 +21,17 @@ test("a public address passes", async () => {
   await isSafeScanTarget("https://test.com/");
 });
 
+test("a private/local address passes (desktop/offline mode)", async () => {
+  stubLookup(async () => [{ address: "192.168.1.1", family: 4 }]);
+  await isSafeScanTarget("http://192.168.1.1/");
+
+  stubLookup(async () => [{ address: "10.0.0.1", family: 4 }]);
+  await isSafeScanTarget("http://myapp.local/");
+
+  await isSafeScanTarget("http://localhost:3000/");
+  await isSafeScanTarget("http://127.0.0.1:8080/");
+});
+
 test("a name with no address records says so, with the hostname and a www hint", async () => {
   stubLookup(async () => Promise.reject(dnsError("ENOTFOUND")));
   const message = await rejection("https://test.com/");
@@ -40,9 +51,10 @@ test("a DNS failure on the server is reported as such, not as a bad target", asy
   }
 });
 
-test("private/internal resolutions are still refused", async () => {
-  stubLookup(async () => [{ address: "10.1.2.3", family: 4 }]);
-  assert.match(await rejection("https://test.com/"), /private\/internal address/);
-  stubLookup(async () => [{ address: "93.184.216.34", family: 4 }, { address: "127.0.0.1", family: 4 }]);
-  assert.match(await rejection("https://test.com/"), /private\/internal address/);
+test("non-http/https protocols are rejected", async () => {
+  assert.match(await rejection("ftp://example.com/"), /must use http or https/);
+});
+
+test("invalid URLs are rejected", async () => {
+  assert.match(await rejection("not-a-url"), /not a valid URL/);
 });
