@@ -5,6 +5,9 @@ Thumbs.db
 # IDE files
 .idea/
 
+# Local-only docs
+docs/
+
 # Python (agent/)
 __pycache__/
 *.py[cod]
