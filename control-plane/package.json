@@ -1,12 +1,12 @@
 {
-  "name": "attack-sim-control-plane",
+  "name": "enginescan-control-plane",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 4000",
-    "dev:emulator": "firebase emulators:start --project=attack-sim-dev --only firestore --import=./firestore-emulator-data --export-on-exit=./firestore-emulator-data",
+    "dev:emulator": "firebase emulators:start --project=enginescan-dev --only firestore --import=./firestore-emulator-data --export-on-exit=./firestore-emulator-data",
     "dev:all": "concurrently -k -n emulator,next \"npm:dev:emulator\" \"npm:dev\"",
-    "export:emulator": "firebase emulators:export --project=attack-sim-dev ./firestore-emulator-data --force",
+    "export:emulator": "firebase emulators:export --project=enginescan-dev ./firestore-emulator-data --force",
     "build": "next build",
     "start": "next start -p 4000",
     "lint": "next lint",

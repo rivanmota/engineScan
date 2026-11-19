@@ -2,6 +2,9 @@
 .DS_Store
 Thumbs.db
 
+# IDE files
+.idea/
+
 # Python (agent/)
 __pycache__/
 *.py[cod]

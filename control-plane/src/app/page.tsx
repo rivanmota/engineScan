@@ -29,7 +29,7 @@ export default function Home() {
       <header className="landing-header">
         <span className="brand">
           <span className="brand-mark">SE</span>
-          StubEngineScan
+          engineScan
         </span>
         <Link href="/dashboard" className="btn btn-secondary">
           Go to dashboard

@@ -11,7 +11,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <header className="app-topbar">
           <Link href="/" className="brand">
             <span className="brand-mark">SE</span>
-            StubEngineScan
+            engineScan
           </Link>
           <DashboardNav />
           <div className="topbar-actions">

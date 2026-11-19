@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 
-const STORAGE_KEY = "attack-sim.apiKey";
+const STORAGE_KEY = "enginescan.apiKey";
 
 interface ApiKeyContextValue {
   apiKey: string;

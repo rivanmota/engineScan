@@ -1,4 +1,4 @@
-# StubEngineScan Web Vulnerability Scanner
+# engineScan Web Vulnerability Scanner
 
 An authorized user submits a target URL, the control plane runs a set of safe, non-destructive, server-side
 HTTP checks against it, and the dashboard shows the findings.
